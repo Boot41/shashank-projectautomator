@@ -5,20 +5,24 @@ import meow from "meow";
 import axios from "axios";
 import App from "./app.js";
 
-const MCP_BASE_URL ="http://localhost:8000";
+const MCP_BASE_URL = process.env["MCP_BASE_URL"] ?? "http://localhost:8000";
 
 const cli = meow(
   `
 Usage
-  $ my-cli jira get --id <TICKET_ID>
+  $ my-cli jira get --id <TICKET_ID> [--json]
 
 Examples
   $ my-cli jira get --id PROJ-123
+  $ MCP_BASE_URL=http://127.0.0.1:8000 my-cli jira get --id PROJ-123 --json
   $ my-cli            (starts interactive REPL)
 `,
   {
     importMeta: import.meta,
-    flags: { id: { type: "string", alias: "i" } }
+    flags: {
+      id: { type: "string", alias: "i" },
+      json: { type: "boolean", default: false }
+    }
   }
 );
 
@@ -33,7 +37,19 @@ async function runOnce() {
     }
     try {
       const res = await axios.get(`${MCP_BASE_URL}/jira/${encodeURIComponent(id)}`, { timeout: 10_000 });
-      console.log(JSON.stringify(res.data, null, 2));
+      if (cli.flags.json) {
+        console.log(JSON.stringify(res.data, null, 2));
+      } else {
+        const d = res.data as any;
+        const lines = [
+          `Ticket   : ${d.ticket ?? ""}`,
+          `Title    : ${d.title ?? ""}`,
+          `Status   : ${d.status ?? ""}`,
+          `Assignee : ${d.assignee ?? "-"}`,
+          `URL      : ${d.url ?? ""}`,
+        ];
+        console.log(lines.join("\n"));
+      }
     } catch (error: any) {
       const message = error?.response?.data ?? error?.message ?? String(error);
       console.error("Request failed:", message);
