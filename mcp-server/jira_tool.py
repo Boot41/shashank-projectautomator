@@ -1,10 +1,12 @@
 import os
 from typing import Any, Dict
+import google.generativeai as genai
 
 import requests
 from fastapi import HTTPException
 from requests.auth import HTTPBasicAuth
 
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 def fetch_jira_issue(ticket_id: str) -> Dict[str, Any]:
     """
@@ -17,6 +19,7 @@ def fetch_jira_issue(ticket_id: str) -> Dict[str, Any]:
     - JIRA_EMAIL: account email used for API token auth
     - JIRA_API_TOKEN: API token generated in Atlassian account
     """
+
     if os.getenv("JIRA_MOCK", "true").lower() == "true":
         return {
             "ticket": ticket_id,
@@ -46,12 +49,48 @@ def fetch_jira_issue(ticket_id: str) -> Dict[str, Any]:
         fields = data.get("fields", {}) or {}
         status = fields.get("status") or {}
         assignee = fields.get("assignee") or {}
+        description = extract_description(fields.get("description")) or {}
         return {
             "ticket": data.get("key", ticket_id),
             "title": fields.get("summary", ""),
             "status": status.get("name", ""),
             "assignee": assignee.get("displayName", ""),
-            "url": f"{base.rstrip('/')}/browse/{ticket_id}",
+            # "url": f"{base.rstrip('/')}/browse/{ticket_id}",
+            "description": description
         }
     except requests.RequestException as e:
         raise HTTPException(status_code=502, detail=f"Jira API error: {e}")
+
+def extract_description(description_doc: dict) -> str:
+    """
+    Extract plain text from Jira's document format description.
+    
+    Args:
+        description_doc: The description field from Jira API response
+        
+    Returns:
+        str: Plain text description
+    """
+    if not description_doc:
+        return ""
+        
+    try:
+        # Handle case where description is already a string
+        if isinstance(description_doc, str):
+            return description_doc
+            
+        # Handle Atlassian Document Format (ADF)
+        if 'content' in description_doc:
+            text_parts = []
+            for content in description_doc.get('content', []):
+                if content.get('type') == 'paragraph' and 'content' in content:
+                    for item in content['content']:
+                        if item.get('type') == 'text':
+                            text_parts.append(item.get('text', ''))
+            return ' '.join(text_parts).strip()
+            
+        # Fallback to string representation if format is unexpected
+        return str(description_doc)
+    except Exception as e:
+        print(f"Error parsing description: {e}")
+        return str(description_doc)

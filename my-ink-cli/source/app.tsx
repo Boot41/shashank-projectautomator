@@ -85,12 +85,50 @@ export default function App() {
             `Title    : ${d.title ?? ''}`,
             `Status   : ${d.status ?? ''}`,
             `Assignee : ${d.assignee ?? '-'}`,
-            `URL      : ${d.url ?? ''}`,
+            `Description : ${d.description ?? "-"}`
           ].join('\n');
 
           append({cmd: trimmed, type: 'result', text: readable});
         } catch (err: any) {
           const message = err?.response?.data ?? err?.message ?? String(err ?? 'Unknown error');
+          append({cmd: trimmed, type: 'error', text: `Request failed: ${message}`});
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
+      else if (parts[0] === 'jira' && parts[1] === 'summarize') {
+        const idFlagIdx = parts.findIndex(p => p === '--id' || p === '-i');
+        const ticketId = idFlagIdx >= 0 ? parts[idFlagIdx + 1] : undefined;
+        if (!ticketId) {
+          append({cmd: trimmed, type: 'error', text: 'Error: --id <TICKET_ID> is required'});
+          return;
+        }
+      
+        try {
+          setBusy(true);
+          // First get the ticket details
+          const ticketRes = await axios.get(
+            `${MCP_BASE_URL}/jira/${encodeURIComponent(ticketId)}`,
+            { timeout: 10_000 }
+          );
+          
+          // Then get the AI summary
+          const summaryRes = await axios.post(
+            `${MCP_BASE_URL}/ai/generate`,
+            { 
+              prompt: `Please provide a concise summary of this Jira ticket: ${JSON.stringify(ticketRes.data)}` 
+            },
+            { 
+              timeout: 15_000,
+              headers: { "Content-Type": "application/json" }
+            }
+          );
+      
+          const summary = summaryRes.data.response || "No summary available";
+          append({cmd: trimmed, type: 'result', text: `\n=== Jira Ticket Summary ===\n\n${summary}\n\n====================\n`});
+        } catch (err: any) {
+          const message = err?.response?.data?.detail ?? err?.message ?? String(err ?? 'Unknown error');
           append({cmd: trimmed, type: 'error', text: `Request failed: ${message}`});
         } finally {
           setBusy(false);

@@ -11,10 +11,12 @@ const cli = meow(
   `
 Usage
   $ my-cli jira get --id <TICKET_ID> [--json]
+  $ my-cli jira summarize --id <TICKET_ID> [--json]
 
 Examples
   $ my-cli jira get --id PROJ-123
-  $ MCP_BASE_URL=http://127.0.0.1:8000 my-cli jira get --id PROJ-123 --json
+  $ my-cli jira summarize --id PROJ-123
+  $ MCP_BASE_URL=http://127.0.0.1:8000 my-cli jira summarize --id PROJ-123 --json
   $ my-cli            (starts interactive REPL)
 `,
   {
@@ -46,13 +48,52 @@ async function runOnce() {
           `Title    : ${d.title ?? ""}`,
           `Status   : ${d.status ?? ""}`,
           `Assignee : ${d.assignee ?? "-"}`,
-          `URL      : ${d.url ?? ""}`,
+          `Description : ${d.description ?? "-"}`
         ];
         console.log(lines.join("\n"));
       }
     } catch (error: any) {
       const message = error?.response?.data ?? error?.message ?? String(error);
       console.error("Request failed:", message);
+      process.exit(1);
+    }
+    return;
+  }
+  else if (cmd === "jira" && subcmd === "summarize") {
+    const id = cli.flags.id as string | undefined;
+    if (!id) {
+      console.error("Error: --id <TICKET_ID> is required");
+      process.exit(1);
+    }
+    try {
+      // First get the ticket details
+      const ticketRes = await axios.get(
+        `${MCP_BASE_URL}/jira/${encodeURIComponent(id)}`, 
+        { timeout: 10_000 }
+      );
+      
+      // Then get the AI summary
+      const summaryRes = await axios.post(
+        `${MCP_BASE_URL}/ai/generate`,
+        { 
+          prompt: `Please provide a concise summary of this Jira ticket: ${JSON.stringify(ticketRes.data)}` 
+        },
+        { 
+          timeout: 15_000,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+
+      if (cli.flags.json) {
+        console.log(JSON.stringify(summaryRes.data, null, 2));
+      } else {
+        const summary = summaryRes.data.response || "No summary available";
+        console.log("\n=== Jira Ticket Summary ===\n");
+        console.log(summary);
+        console.log("\n===========================\n");
+      }
+    } catch (error: any) {
+      console.error("Error:", error.response?.data?.detail || error.message);
       process.exit(1);
     }
     return;
