@@ -1,9 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Optional
 
 class PromptRequest(BaseModel):
     prompt: str
+
+class ProcessCommandRequest(BaseModel):
+    natural_language: str = Field(..., description="Natural language input to be converted to CLI command")
 
 # Optional: load .env if python-dotenv is installed
 try:
@@ -46,3 +50,18 @@ def get_jira(ticket_id: str):
 @app.post("/ai/generate")
 def generate_ai(request: PromptRequest):
     return ai_tool.generate_ai_response(request.prompt)
+
+@app.post("/ai/process-command")
+def process_command(request: ProcessCommandRequest):
+    """
+    Convert natural language input into a CLI command using AI.
+    
+    This endpoint takes a natural language input and returns the most likely
+    CLI command that matches the user's intent.
+    
+    Example:
+    {
+        "natural_language": "show me ticket ABC-123"
+    }
+    """
+    return ai_tool.process_natural_language(request.natural_language)

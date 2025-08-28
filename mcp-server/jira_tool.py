@@ -1,12 +1,9 @@
 import os
 from typing import Any, Dict
-import google.generativeai as genai
 
 import requests
 from fastapi import HTTPException
 from requests.auth import HTTPBasicAuth
-
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 def fetch_jira_issue(ticket_id: str) -> Dict[str, Any]:
     """

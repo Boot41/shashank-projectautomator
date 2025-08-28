@@ -1,5 +1,6 @@
 import React, {useCallback, useMemo, useState, useEffect} from 'react';
 import {Box, Text, useApp} from 'ink';
+import Spinner from 'ink-spinner';
 import Gradient from 'ink-gradient';
 import BigText from 'ink-big-text';
 import TextInput from 'ink-text-input';
@@ -34,9 +35,15 @@ export default function App() {
     () =>
       [
         'Available commands:',
-        '  - jira get --id <TICKET_ID>',
-        '  - /help',
-        '  - /quit',
+        '  - jira get --id <TICKET_ID>  - Get Jira ticket details',
+        '  - jira summarize --id <TICKET_ID> - Get AI summary of a ticket',
+        '  - /help                      - Show this help message',
+        '  - /quit                      - Exit the application',
+        '',
+        'Natural Language Examples:',
+        '  - "Show me ticket ABC-123"',
+        '  - "Summarize ticket ABC-123"',
+        '  - "Get details for issue ABC-123"',
       ].join('\n'),
     []
   );
@@ -45,10 +52,71 @@ export default function App() {
     setHistory(prev => [...prev, entry]);
   }, []);
 
+  const processNaturalLanguage = useCallback(async (input: string) => {
+    try {
+      setBusy(true);
+      const response = await axios.post(
+        `${MCP_BASE_URL}/ai/process-command`,
+        { natural_language: input },
+        { timeout: 30_000 }
+      );
+
+      if (response.data.status !== 'success') {
+        return {
+          success: false,
+          error: response.data.error || 'Failed to process natural language',
+        };
+      }
+
+      return {
+        success: true,
+        command: response.data.command,
+        explanation: response.data.explanation,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message || 'Unknown error',
+      };
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   const runCommand = useCallback(
     async (line: string) => {
       const trimmed = line.trim();
       if (!trimmed) return;
+
+      // Check if it's a natural language command (not starting with / or jira)
+      if (!trimmed.startsWith('/') && !trimmed.startsWith('jira ')) {
+        append({ cmd: trimmed, type: 'info', text: 'Processing natural language...' });
+        
+        const result = await processNaturalLanguage(trimmed);
+        if (!result.success) {
+          append({ 
+            cmd: trimmed, 
+            type: 'error', 
+            text: `Failed to process command: ${result.error}` 
+          });
+          return;
+        }
+
+        // Show the interpreted command
+        if (result.explanation) {
+          append({ 
+            cmd: '', 
+            type: 'info', 
+            text: `→ ${result.explanation}` 
+          });
+        }
+
+        // Execute the generated command
+        if (result.command) {
+          await runCommand(result.command);
+        }
+        return;
+      }
 
       // Handle built-ins
       if (trimmed === '/quit') {
@@ -100,6 +168,7 @@ export default function App() {
       else if (parts[0] === 'jira' && parts[1] === 'summarize') {
         const idFlagIdx = parts.findIndex(p => p === '--id' || p === '-i');
         const ticketId = idFlagIdx >= 0 ? parts[idFlagIdx + 1] : undefined;
+        
         if (!ticketId) {
           append({cmd: trimmed, type: 'error', text: 'Error: --id <TICKET_ID> is required'});
           return;
@@ -114,19 +183,57 @@ export default function App() {
           );
           
           // Then get the AI summary
-          const summaryRes = await axios.post(
-            `${MCP_BASE_URL}/ai/generate`,
-            { 
-              prompt: `Please provide a concise summary of this Jira ticket: ${JSON.stringify(ticketRes.data)}` 
-            },
-            { 
-              timeout: 15_000,
-              headers: { "Content-Type": "application/json" }
+          try {
+            const summaryRes = await axios.post(
+              `${MCP_BASE_URL}/ai/generate`,
+              { 
+                prompt: `Please provide a concise summary of this Jira ticket: ${JSON.stringify(ticketRes.data)}` 
+              },
+              { 
+                timeout: 15_000,
+                headers: { "Content-Type": "application/json" }
+              }
+            );
+
+            const ticketData = ticketRes.data;
+            const baseOutput = [
+              '=== Jira Ticket ===',
+              `Ticket   : ${ticketData.ticket || ''}`,
+              `Title    : ${ticketData.title || ''}`,
+              `Status   : ${ticketData.status || ''}`,
+              `Assignee : ${ticketData.assignee || '-'}`
+            ];
+
+            if (summaryRes.data.status === "error") {
+              // Show error but still display the ticket data
+              const errorMsg = summaryRes.data.error || "Unknown error generating summary";
+              append({
+                cmd: trimmed, 
+                type: 'error', 
+                text: [...baseOutput, `\n=== AI Summary Generation Failed ===\n${errorMsg}\n`].join('\n')
+              });
+            } else {
+              const summary = summaryRes.data.response || "No summary available";
+              append({
+                cmd: trimmed,
+                type: 'result',
+                text: [...baseOutput, `\n=== AI Summary ===\n${summary}\n`].join('\n')
+              });
             }
-          );
-      
-          const summary = summaryRes.data.response || "No summary available";
-          append({cmd: trimmed, type: 'result', text: `\n=== Jira Ticket Summary ===\n\n${summary}\n\n====================\n`});
+          } catch (aiError: any) {
+            // If AI fails, still show the ticket data
+            const errorMsg = aiError?.response?.data?.error || aiError.message || "Unknown error";
+            const readable = [
+              '=== Jira Ticket ===',
+              `Ticket   : ${ticketRes.data.ticket || ''}`,
+              `Title    : ${ticketRes.data.title || ''}`,
+              `Status   : ${ticketRes.data.status || ''}`,
+              `Assignee : ${ticketRes.data.assignee || '-'}`,
+              `\n=== AI Summary Generation Failed ===\n${errorMsg}\n`
+            ].join('\n');
+            
+            append({cmd: trimmed, type: 'error', text: readable});
+          }
         } catch (err: any) {
           const message = err?.response?.data?.detail ?? err?.message ?? String(err ?? 'Unknown error');
           append({cmd: trimmed, type: 'error', text: `Request failed: ${message}`});
@@ -142,65 +249,64 @@ export default function App() {
     [append, exit, helpText]
   );
 
-  const onSubmit = useCallback(
-    async (line: string) => {
-      await runCommand(line);
+  const handleSubmit = useCallback(
+    (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      
       setInput('');
+      runCommand(trimmed);
     },
     [runCommand]
   );
 
   return (
-    <Box flexDirection="column">
-      <Gradient name="rainbow">
-        <BigText text="MY-CLI" />
-      </Gradient>
-
-      <Box flexDirection="column" marginBottom={1}>
-        <Text>Tips for getting started:</Text>
-        <Text>1. Run commands like: jira get --id PROJ-123</Text>
-        <Text>2. Use /help for available commands</Text>
-        <Text>3. Use /quit to exit</Text>
+    <Box flexDirection="column" padding={1}>
+      <Box marginBottom={1}>
+        <Gradient name="rainbow">
+          <BigText text="Jira CLI" font="simple3d" />
+        </Gradient>
       </Box>
 
-      {/* History of commands and their responses */}
-      {history.map((h, idx) => (
-        <Box
-          key={idx}
-          flexDirection="column"
-          borderStyle="round"
-          borderColor={h.type === 'error' ? 'red' : h.type === 'result' ? 'green' : 'cyan'}
-          paddingX={1}
-          paddingY={0}
-          marginBottom={1}
-        >
-          {/* Echo the command */}
-          <Text color="cyan">{`> ${h.cmd}`}</Text>
-          {/* Response text */}
-          <Text color={h.type === 'error' ? 'red' : h.type === 'result' ? 'green' : undefined}>
-            {h.text}
-          </Text>
-        </Box>
-      ))}
+      <Box flexDirection="column" marginBottom={1}>
+        {history.map((entry, i) => (
+          <Box key={i} flexDirection="column">
+            {entry.cmd && (
+              <Box>
+                <Text color="gray">$ </Text>
+                <Text bold>{entry.cmd}</Text>
+              </Box>
+            )}
+            <Box marginLeft={entry.cmd ? 2 : 0}>
+              {entry.type === 'error' ? (
+                <Text color="red">{entry.text}</Text>
+              ) : entry.type === 'info' ? (
+                <Text color="blue">{entry.text}</Text>
+              ) : (
+                <Text>{entry.text}</Text>
+              )}
+            </Box>
+          </Box>
+        ))}
+      </Box>
 
       {!exiting && (
-        <Box
-          borderStyle="round"
-          borderColor="cyan"
-          paddingX={1}
-          paddingY={0}
-          alignItems="center"
-        >
-          <Text color="cyan">{'> '}</Text>
+        <Box>
+          <Box marginRight={1}>
+            <Text color="green">$</Text>
+          </Box>
           <TextInput
             value={input}
             onChange={setInput}
-            onSubmit={onSubmit}
-            placeholder="Type your command..."
-            focus={!busy}
-			showCursor={blinkVisible}
+            onSubmit={handleSubmit}
+            placeholder={busy ? '' : 'Type a command or natural language...'}
+            showCursor={!busy && blinkVisible}
           />
-          {busy && <Text color="yellow">  (working...)</Text>}
+          {busy && (
+            <Box marginLeft={1}>
+              <Text><Spinner type="dots" /> Processing...</Text>
+            </Box>
+          )}
         </Box>
       )}
     </Box>
