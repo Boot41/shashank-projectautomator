@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -43,9 +43,30 @@ app.add_middleware(
 def health():
     return {"ok": True}
 
+@app.get("/jira/projects")
+def list_projects():
+    """
+    List all Jira projects that the user has permission to view.
+    """
+    return jira_tool.get_jira_projects()
+
+
+@app.get("/jira/projects/{project_key}/issues")
+def get_project_issues(project_key: str, status: str = None):
+    """
+    Get all issues for a specific Jira project.
+    
+    Args:
+        project_key: The project key (e.g., 'TP')
+        status: Optional status filter (e.g., 'Open', 'In Progress')
+    """
+    return jira_tool.get_issues_for_project(project_key, status)
+
+
 @app.get("/jira/{ticket_id}")
 def get_jira(ticket_id: str):
     return jira_tool.fetch_jira_issue(ticket_id)
+    
 
 @app.post("/ai/generate")
 def generate_ai(request: PromptRequest):

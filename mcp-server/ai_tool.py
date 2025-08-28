@@ -13,41 +13,6 @@ class ProcessedCommand(BaseModel):
 
 load_dotenv()
 
-def process_natural_language(prompt: str) -> Dict[str, Any]:
-    """
-    Process natural language input and convert it to a CLI command using Gemini.
-    
-    Args:
-        prompt: Natural language input from user
-        
-    Returns:
-        Dict containing the processed command or error
-    """
-    try:
-        model = genai.GenerativeModel('gemini-pro')
-        response = model.generate_content(f"""
-        Convert this natural language request into a CLI command.
-        Available commands:
-        - jira get --id <TICKET_ID>
-        - jira summarize --id <TICKET_ID>
-        - /help
-        - /quit
-
-        Input: {prompt}
-        
-        Respond ONLY with the command, no explanations.
-        """)
-        
-        return {
-            "command": response.text.strip(),
-            "status": "success"
-        }
-    except Exception as e:
-        return {
-            "error": str(e),
-            "status": "error"
-        }
-
 def process_natural_language(natural_language: str) -> Dict[str, Any]:
     """
     Convert natural language input into a CLI command using Gemini AI.
@@ -70,11 +35,25 @@ def process_natural_language(natural_language: str) -> Dict[str, Any]:
     
     Available commands:
     - jira get --id <ticket_id>: Get details of a Jira ticket
+    - jira projects: List all Jira projects you have access to
+    - jira list-issues --project <project_key> [--status <status>]: List issues in a project
     - jira summarize --id <ticket_id>: Get an AI summary of a Jira ticket
     - help: Show help information
     
+    Examples:
+    - "What projects do I have access to?" -> jira projects
+    - "List all my Jira projects" -> jira projects
+    - "Show me projects" -> jira projects
+    - "What's the status of ticket ABC-123?" -> jira get --id ABC-123
+    - "Summarize ticket TP-1" -> jira summarize --id TP-1
+    - "Show me all issues in project ABC" -> jira list-issues --project ABC
+    - "What's open in project XYZ?" -> jira list-issues --project XYZ --status "Open"
+    - "List in-progress issues in project DEV" -> jira list-issues --project DEV --status "In Progress"
+    - "Show me all bugs in project TEST" -> jira list-issues --project TEST --status "Bug"
+    - "What's in the backlog for project ABC?" -> jira list-issues --project ABC --status "Backlog"
+    
     The user will provide a natural language request. Convert it to the appropriate CLI command.
-    If the request is unclear or ambiguous, ask for clarification.
+    If the request is unclear or ambiguous, respond with a help message.
     Only respond with the CLI command, nothing else.
     """
     
@@ -98,9 +77,18 @@ def process_natural_language(natural_language: str) -> Dict[str, Any]:
         command = response.text.strip()
         
         # Basic validation of the command
-        if not command.startswith(('jira get', 'jira summarize', 'help')):
+        valid_commands = [
+            'jira get', 
+            'jira projects', 
+            'jira summarize', 
+            'jira list-issues',
+            'help',
+            '/help',
+            '/quit'
+        ]
+        if not any(command.startswith(cmd) for cmd in valid_commands):
             return {
-                "error": f"Generated command '{command}' is not a valid command",
+                "error": f"Generated command '{command}' is not a valid command. Try 'help' for available commands.",
                 "status": "error",
                 "error_type": "invalid_command"
             }

@@ -12,17 +12,22 @@ const cli = meow(
 Usage
   $ my-cli jira get --id <TICKET_ID> [--json]
   $ my-cli jira summarize --id <TICKET_ID> [--json]
+  $ my-cli jira list-issues --project <PROJECT_KEY> [--status <STATUS>] [--json]
 
 Examples
   $ my-cli jira get --id PROJ-123
   $ my-cli jira summarize --id PROJ-123
-  $ MCP_BASE_URL=http://127.0.0.1:8000 my-cli jira summarize --id PROJ-123 --json
+  $ my-cli jira list-issues --project PROJ
+  $ my-cli jira list-issues --project PROJ --status "In Progress"
+  $ MCP_BASE_URL=http://127.0.0.1:8000 my-cli jira list-issues --project PROJ --json
   $ my-cli            (starts interactive REPL)
 `,
   {
     importMeta: import.meta,
     flags: {
       id: { type: "string", alias: "i" },
+      project: { type: "string" },
+      status: { type: "string" },
       json: { type: "boolean", default: false }
     }
   }
