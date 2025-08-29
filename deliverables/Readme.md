@@ -1,6 +1,6 @@
 # Project Automator 🚀
 
-A powerful automation tool that streamlines project setup and management for developers. Project Automator provides a unified CLI interface to handle project initialization, GitHub repository management, CI/CD pipeline setup, and Jira integration.
+A powerful automation tool that streamlines project setup and management for developers. Project Automator provides a unified CLI interface to handle project initialization, GitHub repository management and Jira integration.
 
 ## ✨ Features
 
