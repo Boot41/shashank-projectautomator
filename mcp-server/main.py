@@ -20,11 +20,13 @@ try:
     # Prefer absolute import when running via `uvicorn main:app`
     import jira_tool as jira_tool  # type: ignore
     import ai_tool as ai_tool  # type: ignore
+    import github_tool as github_tool  # type: ignore
 except Exception:
     try:
         # Fallback for running as a module: `python -m mcp-server.main`
         from . import jira_tool as jira_tool  # type: ignore
         from . import ai_tool as ai_tool  # type: ignore
+        from . import github_tool as github_tool  # type: ignore
     except Exception:
         # If both fail, surface the original error
         raise
@@ -66,7 +68,37 @@ def get_project_issues(project_key: str, status: str = None):
 @app.get("/jira/{ticket_id}")
 def get_jira(ticket_id: str):
     return jira_tool.fetch_jira_issue(ticket_id)
+
+
+@app.get("/github/commits/{owner}/{repo}")
+def get_github_commits(
+    owner: str,
+    repo: str,
+    branch: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    limit: int = 10
+):
+    """
+    Get commit history for a GitHub repository.
     
+    Args:
+        owner: Repository owner (username or organization)
+        repo: Repository name
+        branch: Branch name (default: repository's default branch)
+        since: Only show commits after this date (ISO 8601 format)
+        until: Only show commits before this date (ISO 8601 format)
+        limit: Maximum number of commits to return (1-100, default: 10)
+    """
+    return github_tool.get_commit_history(
+        owner=owner,
+        repo=repo,
+        branch=branch,
+        since=since,
+        until=until,
+        limit=min(limit, 100)  # Enforce maximum limit
+    )
+
 
 @app.post("/ai/generate")
 def generate_ai(request: PromptRequest):

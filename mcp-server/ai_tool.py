@@ -31,23 +31,29 @@ def process_natural_language(natural_language: str) -> Dict[str, Any]:
         }
     
     # System prompt to guide the AI in converting natural language to CLI commands
-    system_prompt = """You are a helpful assistant that converts natural language requests into CLI commands for a Jira management tool.
+    system_prompt = """You are a helpful assistant that converts natural language requests into CLI commands for development tools.
     
-    Available commands:
+    Available Jira commands:
     - jira get --id <ticket_id>: Get details of a Jira ticket
     - jira projects: List all Jira projects you have access to
     - jira list-issues --project <project_key> [--status <status>]: List issues in a project
     - jira summarize --id <ticket_id>: Get an AI summary of a Jira ticket
+    
+    Available GitHub commands:
+    - github commits <owner>/<repo> [--branch <branch>] [--limit <number>]: Get commit history
+    - github commits <owner>/<repo> --since <date> --until <date>: Get commits in date range
+    - github commits <owner>/<repo> --branch main --limit 5: Get last 5 commits from main branch
+    
+    General commands:
     - help: Show help information
     
     Examples:
     - "What projects do I have access to?" -> jira projects
-    - "List all my Jira projects" -> jira projects
-    - "Show me projects" -> jira projects
-    - "What's the status of ticket ABC-123?" -> jira get --id ABC-123
-    - "Summarize ticket TP-1" -> jira summarize --id TP-1
-    - "Show me all issues in project ABC" -> jira list-issues --project ABC
-    - "What's open in project XYZ?" -> jira list-issues --project XYZ --status "Open"
+    - "Show me ticket ABC-123" -> jira get --id ABC-123
+    - "Show commits from reactjs/react-app" -> github commits reactjs/react-app
+    - "Show last 5 commits from main branch" -> github commits owner/repo --branch main --limit 5
+    - "Show commits from last week" -> github commits owner/repo --since "1 week ago"
+    - "Show commits between Jan 1 and Feb 1" -> github commits owner/repo --since "2023-01-01" --until "2023-02-01"
     - "List in-progress issues in project DEV" -> jira list-issues --project DEV --status "In Progress"
     - "Show me all bugs in project TEST" -> jira list-issues --project TEST --status "Bug"
     - "What's in the backlog for project ABC?" -> jira list-issues --project ABC --status "Backlog"
@@ -56,6 +62,26 @@ def process_natural_language(natural_language: str) -> Dict[str, Any]:
     If the request is unclear or ambiguous, respond with a help message.
     Only respond with the CLI command, nothing else.
     """
+    
+    patterns = [
+        # Jira patterns
+        (r'(?i)(?:show|get|what is|what\'s).*ticket\s+([A-Z]+-\d+)', 'jira get --id \1', 0.9),
+        (r'(?i)(?:list|show).*projects', 'jira projects', 0.9),
+        (r'(?i)(?:list|show).*issues.*project\s+([A-Z0-9]+)', 'jira list-issues --project \1', 0.85),
+        (r'(?i)(?:list|show).*(?:open|in progress).*project\s+([A-Z0-9]+)', 'jira list-issues --project \1 --status "In Progress"', 0.9),
+        (r'(?i)summar(?:y|ize).*ticket\s+([A-Z]+-\d+)', 'jira summarize --id \1', 0.9),
+        
+        # GitHub patterns - More specific patterns first
+        (r'(?i)(?:show|list|get).*(\d+).*commits?.*(?:from|in|for)\s+([a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+).*branch\s+([^\s\n]+)', 'github commits \2 --branch \3 --limit \1', 0.95),
+        (r'(?i)(?:show|list|get).*commits?.*(?:from|in|for)\s+([a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+).*branch\s+([^\s\n]+)', 'github commits \1 --branch \2', 0.9),
+        (r'(?i)(?:show|list|get).*(\d+).*commits?.*(?:from|in|for)\s+([a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+)', 'github commits \2 --limit \1', 0.9),
+        (r'(?i)(?:show|list|get).*commits?.*(?:from|in|for)\s+([a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+)', 'github commits \1', 0.85),
+        (r'(?i)(?:commits?|changes).*since\s+(.*?)(?:\s+until|\s+to|\s+til|\s+before)?\s*([^\s\n]+)?', 'github commits \1 --since "\2" --until "\3"', 0.85),
+        (r'(?i)last\s+(\d+)\s+commits?.*(?:on|from|in)?\s*([a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+)?', 'github commits \2 --limit \1', 0.9),
+        
+        # Help command
+        (r'(?i)(?:help|what can you do|how to use)', 'help', 1.0),
+    ]
     
     try:
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -76,28 +102,40 @@ def process_natural_language(natural_language: str) -> Dict[str, Any]:
         # Clean up and validate the response
         command = response.text.strip()
         
-        # Basic validation of the command
+        # Clean up the command - remove any leading/trailing spaces and quotes
+        command = command.strip('"\'').strip()
+        
+        # If the response starts with a command we recognize, use it directly
         valid_commands = [
-            'jira get', 
-            'jira projects', 
-            'jira summarize', 
+            'jira get --id',
+            'jira projects',
             'jira list-issues',
-            'help',
-            '/help',
-            '/quit'
+            'jira summarize --id',
+            'github commits',
+            'help'
         ]
-        if not any(command.startswith(cmd) for cmd in valid_commands):
+        
+        # Check if the command starts with any valid prefix
+        if any(command.startswith(cmd) for cmd in valid_commands):
+            # Ensure github commits has the correct format
+            if command.startswith('github commits'):
+                # Remove any extra spaces between words
+                parts = command.split()
+                # Reconstruct the command with proper spacing
+                command = f"{parts[0]} {parts[1]} {parts[2]} {' '.join(parts[3:])}"
+            
             return {
-                "error": f"Generated command '{command}' is not a valid command. Try 'help' for available commands.",
-                "status": "error",
-                "error_type": "invalid_command"
+                'status': 'success',
+                'command': command,
+                'explanation': f'Converted natural language to command: {command}'
             }
         
         return {
-            "command": command,
+            "error": f"Generated command '{command}' is not a valid command. Try 'help' for available commands.",
+            "status": "error",
+            "error_type": "invalid_command",
             "confidence": 0.9,  # High confidence for now
-            "explanation": f"Converted natural language to command: {command}",
-            "status": "success"
+            "explanation": f"Converted natural language to command: {command}"
         }
         
     except Exception as e:

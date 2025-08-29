@@ -33,21 +33,28 @@ export default function App() {
   const helpText = useMemo(
     () =>
       [
-        'Available commands:',
+        'Available Jira commands:',
         '  - jira get --id <TICKET_ID>  - Get Jira ticket details',
         '  - jira projects             - List all accessible Jira projects',
         '  - jira list-issues --project <KEY> [--status <STATUS>] - List issues in a project',
         '  - jira summarize --id <TICKET_ID> - Get AI summary of a ticket',
+        '',
+        'Available GitHub commands:',
+        '  - github commits <owner>/<repo> [--branch <branch>] - Get commit history',
+        '  - github commits <owner>/<repo> --limit <number>   - Limit number of commits',
+        '  - github commits <owner>/<repo> --since <date>     - Commits since date',
+        '  - github commits <owner>/<repo> --until <date>     - Commits until date',
+        '',
+        'General commands:',
         '  - /help                      - Show this help message',
         '  - /quit                      - Exit the application',
         '',
         'Natural Language Examples:',
         '  - "Show me ticket ABC-123"',
-        '  - "List all projects"',
-        '  - "What projects do I have access to?"',
-        '  - "Show me my Jira projects"',
-        '  - "Get details for issue ABC-123"',
-        '  - "Show me all issues in PROJ"',
+        '  - "Show commits from facebook/react"',
+        '  - "Show last 5 commits from main branch"',
+        '  - "Show commits from last week"',
+        '  - "Show commits between Jan 1 and Feb 1"',
         '  - "List open issues in project ABC"',
         '  - "What\'s in progress in project XYZ?"',
       ].join('\n'),
@@ -118,8 +125,8 @@ export default function App() {
       const trimmed = line.trim();
       if (!trimmed) return;
 
-      // Check if it's a natural language command (not starting with / or jira)
-      if (!trimmed.startsWith('/') && !trimmed.startsWith('jira ')) {
+      // Check if it's a natural language command (not starting with /, jira, or github)
+      if (!trimmed.startsWith('/') && !trimmed.startsWith('jira ') && !trimmed.startsWith('github ')) {
         append({ cmd: trimmed, type: 'info', text: 'Processing natural language...' });
         
         const result = await processNaturalLanguage(trimmed);
@@ -156,6 +163,101 @@ export default function App() {
         return;
       }
 
+      // Handle github commands
+      if (trimmed.startsWith('github commits ')) {
+        try {
+          setBusy(true);
+          // Extract the repo path and any additional flags
+          const repoPath = trimmed.replace('github commits ', '').split(' ')[0];
+          
+          if (!repoPath) {
+            throw new Error('Repository path is required. Use: github commits owner/repo');
+          }
+          
+          const repoParts = repoPath.split('/');
+          
+          if (repoParts.length !== 2) {
+            throw new Error('Invalid repository format. Use: github commits owner/repo');
+          }
+          
+          const [owner, repo] = repoParts;
+          const params = new URLSearchParams();
+          
+          // Parse additional flags with type safety
+          const parts = trimmed.split(/\s+/);
+          
+          const branchIdx = parts.findIndex(p => p === '--branch' || p === '-b');
+          const branchValue = branchIdx > 0 ? parts[branchIdx + 1] : undefined;
+          if (branchValue) {
+            params.append('branch', branchValue);
+          }
+          
+          const sinceIdx = parts.findIndex(p => p === '--since' || p === '-s');
+          const sinceValue = sinceIdx > 0 ? parts[sinceIdx + 1] : undefined;
+          if (sinceValue) {
+            params.append('since', sinceValue);
+          }
+          
+          const untilIdx = parts.findIndex(p => p === '--until' || p === '-u');
+          const untilValue = untilIdx > 0 ? parts[untilIdx + 1] : undefined;
+          if (untilValue) {
+            params.append('until', untilValue);
+          }
+          
+          const limitIdx = parts.findIndex(p => p === '--limit' || p === '-l');
+          const limitValue = limitIdx > 0 ? parts[limitIdx + 1] : undefined;
+          if (limitValue) {
+            params.append('limit', limitValue);
+          }
+          
+          const url = new URL(
+            `${MCP_BASE_URL}/github/commits/${owner}/${repo}?${params.toString()}`
+          );
+          
+          const res = await axios.get(url.toString(), {
+            timeout: 15_000,
+            validateStatus: () => true
+          });
+          
+          if (res.status !== 200) {
+            throw new Error(res.data?.error || `HTTP ${res.status} error`);
+          }
+          
+          const commits = res.data;
+          if (!Array.isArray(commits) || commits.length === 0) {
+            append({cmd: trimmed, type: 'info', text: 'No commits found.'});
+            return;
+          }
+          
+          // Format commits as a readable list
+          const result = [
+            `=== Commits for ${owner}/${repo} ===`,
+            `Branch: ${params.get('branch') || 'default'}`,
+            ''
+          ];
+          
+          commits.forEach((commit: any) => {
+            const date = new Date(commit.author?.date || '').toLocaleString();
+            result.push(`[${commit.sha?.slice(0, 7) || 'N/A'}] ${commit.message || 'No message'}`);
+            result.push(`  Author: ${commit.author?.name || 'Unknown'} <${commit.author?.email || ''}>`);
+            result.push(`  Date:   ${date}`);
+            if (commit.url) {
+              result.push(`  URL:    ${commit.url}`);
+            }
+            result.push('');
+          });
+          
+          append({cmd: trimmed, type: 'result', text: result.join('\n')});
+          
+        } catch (err: any) {
+          const message = err?.response?.data?.detail || err?.message || String(err || 'Unknown error');
+          append({cmd: trimmed, type: 'error', text: `Failed to fetch commits: ${message}`});
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
+      
       // Handle projects command
       if (trimmed === 'jira projects' || trimmed === 'projects') {
         try {
@@ -207,6 +309,94 @@ export default function App() {
 
       // Simple parse: jira get --id <TICKET>
       const parts = trimmed.split(/\s+/);
+      
+      // Handle github commits command
+      if (parts[0] === 'github' && parts[1] === 'commits' && parts[2]) {
+        try {
+          setBusy(true);
+          const repoPath = parts[2];
+          const repoParts = repoPath.split('/');
+          
+          if (repoParts.length !== 2) {
+            throw new Error('Invalid repository format. Use: github commits owner/repo');
+          }
+          
+          const [owner, repo] = repoParts;
+          const params = new URLSearchParams();
+          
+          // Parse additional flags with type safety
+          const branchIdx = parts.findIndex(p => p === '--branch' || p === '-b');
+          const branchValue = branchIdx > 0 ? parts[branchIdx + 1] : undefined;
+          if (branchValue) {
+            params.append('branch', branchValue);
+          }
+          
+          const sinceIdx = parts.findIndex(p => p === '--since' || p === '-s');
+          const sinceValue = sinceIdx > 0 ? parts[sinceIdx + 1] : undefined;
+          if (sinceValue) {
+            params.append('since', sinceValue);
+          }
+          
+          const untilIdx = parts.findIndex(p => p === '--until' || p === '-u');
+          const untilValue = untilIdx > 0 ? parts[untilIdx + 1] : undefined;
+          if (untilValue) {
+            params.append('until', untilValue);
+          }
+          
+          const limitIdx = parts.findIndex(p => p === '--limit' || p === '-l');
+          const limitValue = limitIdx > 0 ? parts[limitIdx + 1] : undefined;
+          if (limitValue) {
+            params.append('limit', limitValue);
+          }
+          
+          const url = new URL(
+            `${MCP_BASE_URL}/github/commits/${owner}/${repo}?${params.toString()}`
+          );
+          
+          const res = await axios.get(url.toString(), {
+            timeout: 15_000,
+            validateStatus: () => true
+          });
+          
+          if (res.status !== 200) {
+            throw new Error(res.data?.error || `HTTP ${res.status} error`);
+          }
+          
+          const commits = res.data;
+          if (!Array.isArray(commits) || commits.length === 0) {
+            append({cmd: trimmed, type: 'info', text: 'No commits found.'});
+            return;
+          }
+          
+          // Format commits as a readable list
+          const result = [
+            `=== Commits for ${owner}/${repo} ===`,
+            `Branch: ${params.get('branch') || 'default'}`,
+            ''
+          ];
+          
+          commits.forEach((commit: any) => {
+            const date = new Date(commit.author?.date || '').toLocaleString();
+            result.push(`[${commit.sha.slice(0, 7)}] ${commit.message}`);
+            result.push(`  Author: ${commit.author?.name || 'Unknown'} <${commit.author?.email || ''}>`);
+            result.push(`  Date:   ${date}`);
+            if (commit.url) {
+              result.push(`  URL:    ${commit.url}`);
+            }
+            result.push('');
+          });
+          
+          append({cmd: trimmed, type: 'result', text: result.join('\n')});
+          
+        } catch (err: any) {
+          const message = err?.response?.data?.detail || err?.message || String(err || 'Unknown error');
+          append({cmd: trimmed, type: 'error', text: `Failed to fetch commits: ${message}`});
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
+      
       if (parts[0] === 'jira' && parts[1] === 'get') {
         const idFlagIdx = parts.findIndex(p => p === '--id' || p === '-i');
         const ticketId = idFlagIdx >= 0 ? parts[idFlagIdx + 1] : undefined;
