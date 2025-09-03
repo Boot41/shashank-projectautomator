@@ -20,7 +20,7 @@
 	],
 	"dependencies": {
 		"axios": "^1.11.0",
-		"ink": "^4.1.0",
+		    "ink": "^5.0.0",
 		"ink-big-text": "^2.0.0",
 		"ink-gradient": "^3.0.0",
 		"ink-spinner": "^5.0.0",

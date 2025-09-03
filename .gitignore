@@ -1,0 +1,47 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Node (my-ink-cli/)
+node_modules/
+dist/
+.cache/
+*.tsbuildinfo
+coverage/
+.nyc_output/
+
+# Package manager state (optional)
+.pnpm-store/
+
+# Env files
+.env
+*.env
+
+# Python (mcp-server/)
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Misc
+*.local
