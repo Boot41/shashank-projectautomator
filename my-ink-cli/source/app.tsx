@@ -1,20 +1,25 @@
-import React, { FC, useState, useMemo } from 'react';
+import React, { FC } from 'react';
 import { Box, Text } from 'ink';
 import TextInput from 'ink-text-input';
-import { CommandParser } from './commands/parser.js';
+import { parseCommand } from './commands/parser.js';
 
 const App: FC = () => {
-  const [input, setInput] = useState('');
-  const [output, setOutput] = useState<string>('');
-  const parser = useMemo(() => new CommandParser(), []);
+  const [input, setInput] = React.useState('');
+  const [output, setOutput] = React.useState<string>('');
+  const [error, setError] = React.useState<string | null>(null);
 
   const handleSubmit = async (value: string) => {
-    if (!value) return;
+    setError(null);
     try {
-      const result = await parser.parse(value);
+      // Support format: [server-name:]command [args]
+      // Example: github-official:jira get --id ABC-123
+      // Example: jira get --id ABC-123 (uses default local-mcp)
+      const result = await parseCommand(value);
       setOutput(JSON.stringify(result, null, 2));
-    } catch (error: any) {
-      setOutput(`Error: ${error.message}`);
+    } catch (err) {
+       const error = err as Error;
+      setError(error.message || 'An unknown error occurred');
+      setOutput('');
     }
     setInput('');
   };
@@ -26,7 +31,7 @@ const App: FC = () => {
         <TextInput value={input} onChange={setInput} onSubmit={handleSubmit} />
       </Box>
       {output && (
-        <Box marginTop={1} borderStyle="round" padding={1}>
+        <Box marginTop={1}>
           <Text>{output}</Text>
         </Box>
       )}
