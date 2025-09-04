@@ -21,3 +21,15 @@ class JiraIssueBasic(BaseModel):
     status: Optional[str] = None
     assignee: Optional[str] = "Unassigned"
     priority: Optional[str] = None
+
+class JiraSprint(BaseModel):
+    id: int
+    name: str
+    state: str
+    boardId: int
+
+class CreateJiraIssue(BaseModel):
+    project_key: str
+    summary: str
+    description: str
+    issuetype_name: str = "Task"
