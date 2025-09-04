@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     jira_mock: bool = False
     http_timeout: float = 15.0
     jira_default_project_key: str | None = None
+    api_key: str | None = None
+    expose_rest_endpoints: bool = False
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_from_name: str | None = None
 
     class Config:
         env_file = ".env"

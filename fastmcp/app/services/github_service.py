@@ -152,6 +152,24 @@ async def merge_pull_request(owner: str, repo: str, pr_number: int) -> Dict[str,
         except httpx.RequestError as e:
             raise HTTPException(status_code=502, detail=f"GitHub API error: {e}")
 
+@tool(name="github_close_pull_request")
+async def close_pull_request(owner: str, repo: str, pr_number: int) -> Dict[str, Any]:
+    """Closes a pull request without merging."""
+    if settings.github_mock:
+        return {"closed": True, "message": "Pull Request successfully closed"}
+
+    url = f"{settings.github_api_url}/repos/{owner}/{repo}/pulls/{pr_number}"
+    headers = _get_github_headers()
+    data = {"state": "closed"}
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.patch(url, headers=headers, json=data, timeout=settings.http_timeout)
+            response.raise_for_status()
+            return response.json()
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=502, detail=f"GitHub API error: {e}")
+
 @tool(name="github_get_issues")
 async def get_issues(owner: str, repo: str) -> List[GithubIssue]:
     """Gets a list of issues for a repository."""

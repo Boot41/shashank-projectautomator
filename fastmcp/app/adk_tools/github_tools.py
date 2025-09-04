@@ -1,5 +1,6 @@
 from google.ai.generativelanguage import Tool, FunctionDeclaration, Schema
 from ..services import github_service
+from ..services.email_service import send_email
 
 # --- List repositories ---
 github_get_repos_tool = Tool(
@@ -113,6 +114,28 @@ github_merge_pull_request_tool = Tool(
 async def run_github_merge_pull_request(owner: str, repo: str, pr_number: int):
     return await github_service.merge_pull_request(owner, repo, pr_number)
 
+# --- Close pull request ---
+github_close_pull_request_tool = Tool(
+    function_declarations=[
+        FunctionDeclaration(
+            name="github_close_pull_request",
+            description="Close a pull request without merging",
+            parameters=Schema(
+                type=Schema.Type.OBJECT,
+                properties={
+                    "owner": Schema(type=Schema.Type.STRING, description="Repository owner"),
+                    "repo": Schema(type=Schema.Type.STRING, description="Repository name"),
+                    "pr_number": Schema(type=Schema.Type.INTEGER, description="Pull request number"),
+                },
+                required=["owner", "repo", "pr_number"],
+            ),
+        )
+    ]
+)
+
+async def run_github_close_pull_request(owner: str, repo: str, pr_number: int):
+    return await github_service.close_pull_request(owner, repo, pr_number)
+
 # --- List issues ---
 github_get_issues_tool = Tool(
     function_declarations=[
@@ -182,5 +205,29 @@ github_comment_issue_tool = Tool(
 
 async def run_github_comment_issue(owner: str, repo: str, issue_number: int, comment_body: str):
     return await github_service.comment_issue(owner, repo, issue_number, comment_body)
+
+# --- Send email (SMTP) ---
+from google.generativeai import types as gen_types  # type: ignore
+
+email_send_tool = Tool(
+    function_declarations=[
+        FunctionDeclaration(
+            name="email_send",
+            description="Send an email via configured SMTP",
+            parameters=Schema(
+                type=Schema.Type.OBJECT,
+                properties={
+                    "to": Schema(type=Schema.Type.STRING, description="Recipient email address"),
+                    "subject": Schema(type=Schema.Type.STRING, description="Email subject"),
+                    "body": Schema(type=Schema.Type.STRING, description="Email body text"),
+                },
+                required=["to", "subject", "body"],
+            ),
+        )
+    ]
+)
+
+async def run_email_send(to: str, subject: str, body: str):
+    return await send_email(to_email=to, subject=subject, body=body)
 
 

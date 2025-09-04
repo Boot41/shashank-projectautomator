@@ -1,15 +1,7 @@
 try:
-    from .jira_tools import (
-        jira_fetch_issue_tool,
-        jira_get_projects_tool,
-        jira_get_issues_for_project_tool,
-        jira_create_issue_tool,
-        jira_assign_issue_tool,
-        jira_get_possible_transitions_tool,
-        jira_transition_issue_tool,
-        jira_comment_issue_tool,
-        jira_get_sprints_tool,
-        jira_move_issue_to_sprint_tool,
+    # Import runner functions from the clean runners module
+    from .runners import (
+        # Jira runners
         run_jira_fetch_issue,
         run_jira_get_projects,
         run_jira_get_issues_for_project,
@@ -20,49 +12,23 @@ try:
         run_jira_comment_issue,
         run_jira_get_sprints,
         run_jira_move_issue_to_sprint,
-    )
-
-    from .github_tools import (
-        github_get_repos_tool,
-        github_get_branches_tool,
-        github_create_branch_tool,
-        github_create_pull_request_tool,
-        github_merge_pull_request_tool,
-        github_get_issues_tool,
-        github_create_issue_tool,
-        github_comment_issue_tool,
+        # GitHub runners
         run_github_get_repos,
         run_github_get_branches,
         run_github_create_branch,
         run_github_create_pull_request,
         run_github_merge_pull_request,
+        run_github_close_pull_request,
         run_github_get_issues,
         run_github_create_issue,
         run_github_comment_issue,
+        run_email_send,
+        run_regenerate_email_summary,
+        run_finalize_email_summary,
     )
 
-    ALL_TOOLS = [
-        # Jira tools
-        jira_fetch_issue_tool,
-        jira_get_projects_tool,
-        jira_get_issues_for_project_tool,
-        jira_create_issue_tool,
-        jira_assign_issue_tool,
-        jira_get_possible_transitions_tool,
-        jira_transition_issue_tool,
-        jira_comment_issue_tool,
-        jira_get_sprints_tool,
-        jira_move_issue_to_sprint_tool,
-        # GitHub tools
-        github_get_repos_tool,
-        github_get_branches_tool,
-        github_create_branch_tool,
-        github_create_pull_request_tool,
-        github_merge_pull_request_tool,
-        github_get_issues_tool,
-        github_create_issue_tool,
-        github_comment_issue_tool,
-    ]
+    # We don't need ALL_TOOLS since we're using our own tool declarations in coordinator
+    ALL_TOOLS = []
 
     ALL_TOOL_RUNNERS = {
         # Jira runners
@@ -82,9 +48,13 @@ try:
         "github_create_branch": run_github_create_branch,
         "github_create_pull_request": run_github_create_pull_request,
         "github_merge_pull_request": run_github_merge_pull_request,
+        "github_close_pull_request": run_github_close_pull_request,
         "github_get_issues": run_github_get_issues,
         "github_create_issue": run_github_create_issue,
         "github_comment_issue": run_github_comment_issue,
+        "email_send": run_email_send,
+        "regenerate_email_summary": run_regenerate_email_summary,
+        "finalize_email_summary": run_finalize_email_summary,
     }
 except Exception:
     # Fail open: if ADK tool schemas aren't available, expose empty lists
