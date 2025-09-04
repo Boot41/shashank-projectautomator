@@ -1,0 +1,92 @@
+try:
+    from .jira_tools import (
+        jira_fetch_issue_tool,
+        jira_get_projects_tool,
+        jira_get_issues_for_project_tool,
+        jira_create_issue_tool,
+        jira_assign_issue_tool,
+        jira_get_possible_transitions_tool,
+        jira_transition_issue_tool,
+        jira_comment_issue_tool,
+        jira_get_sprints_tool,
+        jira_move_issue_to_sprint_tool,
+        run_jira_fetch_issue,
+        run_jira_get_projects,
+        run_jira_get_issues_for_project,
+        run_jira_create_issue,
+        run_jira_assign_issue,
+        run_jira_get_possible_transitions,
+        run_jira_transition_issue,
+        run_jira_comment_issue,
+        run_jira_get_sprints,
+        run_jira_move_issue_to_sprint,
+    )
+
+    from .github_tools import (
+        github_get_repos_tool,
+        github_get_branches_tool,
+        github_create_branch_tool,
+        github_create_pull_request_tool,
+        github_merge_pull_request_tool,
+        github_get_issues_tool,
+        github_create_issue_tool,
+        github_comment_issue_tool,
+        run_github_get_repos,
+        run_github_get_branches,
+        run_github_create_branch,
+        run_github_create_pull_request,
+        run_github_merge_pull_request,
+        run_github_get_issues,
+        run_github_create_issue,
+        run_github_comment_issue,
+    )
+
+    ALL_TOOLS = [
+        # Jira tools
+        jira_fetch_issue_tool,
+        jira_get_projects_tool,
+        jira_get_issues_for_project_tool,
+        jira_create_issue_tool,
+        jira_assign_issue_tool,
+        jira_get_possible_transitions_tool,
+        jira_transition_issue_tool,
+        jira_comment_issue_tool,
+        jira_get_sprints_tool,
+        jira_move_issue_to_sprint_tool,
+        # GitHub tools
+        github_get_repos_tool,
+        github_get_branches_tool,
+        github_create_branch_tool,
+        github_create_pull_request_tool,
+        github_merge_pull_request_tool,
+        github_get_issues_tool,
+        github_create_issue_tool,
+        github_comment_issue_tool,
+    ]
+
+    ALL_TOOL_RUNNERS = {
+        # Jira runners
+        "jira_fetch_issue": run_jira_fetch_issue,
+        "jira_get_projects": run_jira_get_projects,
+        "jira_get_issues_for_project": run_jira_get_issues_for_project,
+        "jira_create_issue": run_jira_create_issue,
+        "jira_assign_issue": run_jira_assign_issue,
+        "jira_get_possible_transitions": run_jira_get_possible_transitions,
+        "jira_transition_issue": run_jira_transition_issue,
+        "jira_comment_issue": run_jira_comment_issue,
+        "jira_get_sprints": run_jira_get_sprints,
+        "jira_move_issue_to_sprint": run_jira_move_issue_to_sprint,
+        # GitHub runners
+        "github_get_repos": run_github_get_repos,
+        "github_get_branches": run_github_get_branches,
+        "github_create_branch": run_github_create_branch,
+        "github_create_pull_request": run_github_create_pull_request,
+        "github_merge_pull_request": run_github_merge_pull_request,
+        "github_get_issues": run_github_get_issues,
+        "github_create_issue": run_github_create_issue,
+        "github_comment_issue": run_github_comment_issue,
+    }
+except Exception:
+    # Fail open: if ADK tool schemas aren't available, expose empty lists
+    ALL_TOOLS = []
+    ALL_TOOL_RUNNERS = {}
