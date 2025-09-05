@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  fastmcp-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # API Keys (set these in .env file)
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - JIRA_EMAIL=${JIRA_EMAIL}
+      - JIRA_API_TOKEN=${JIRA_API_TOKEN}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - API_KEY=${API_KEY}
+      
+      # SMTP Configuration
+      - SMTP_SERVER=${SMTP_SERVER:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      
+      # Application Settings
+      - GITHUB_MOCK=${GITHUB_MOCK:-false}
+      - JIRA_MOCK=${JIRA_MOCK:-false}
+      - GITHUB_API_URL=${GITHUB_API_URL:-https://api.github.com}
+      - JIRA_BASE_URL=${JIRA_BASE_URL}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash-lite}
+      - HTTP_TIMEOUT=${HTTP_TIMEOUT:-30}
+      - EXPOSE_REST_ENDPOINTS=${EXPOSE_REST_ENDPOINTS:-false}
+      
+      # Development Settings
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./context.json:/app/context.json
+      - ./sessions:/app/sessions
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
