@@ -136,19 +136,59 @@ async def create_pull_request(owner: str, repo: str, pr_data: CreatePullRequest)
             raise HTTPException(status_code=502, detail=f"GitHub API error: {e}")
 
 @tool(name="github_merge_pull_request")
-async def merge_pull_request(owner: str, repo: str, pr_number: int) -> Dict[str, Any]:
-    """Merges a pull request."""
+async def merge_pull_request(owner: str, repo: str, pr_number: int, commit_title: str = None, commit_message: str = None, merge_method: str = "merge") -> Dict[str, Any]:
+    """Merges a pull request with optional commit message and merge method."""
     if settings.github_mock:
-        return {"merged": True, "message": "Pull Request successfully merged"}
+        return {
+            "merged": True, 
+            "message": "Pull Request successfully merged",
+            "commit_sha": "abc123def456",
+            "merge_method": merge_method,
+            "commit_title": commit_title or f"Merge PR #{pr_number}",
+            "commit_message": commit_message or f"Merge pull request #{pr_number}"
+        }
+
+    # If no commit title/message provided, try to get them from the PR
+    if not commit_title or not commit_message:
+        try:
+            pr_url = f"{settings.github_api_url}/repos/{owner}/{repo}/pulls/{pr_number}"
+            async with httpx.AsyncClient() as client:
+                pr_response = await client.get(pr_url, headers=_get_github_headers(), timeout=settings.http_timeout)
+                pr_response.raise_for_status()
+                pr_data = pr_response.json()
+                
+                if not commit_title:
+                    commit_title = f"Merge PR #{pr_number}: {pr_data.get('title', '')}"
+                if not commit_message:
+                    commit_message = pr_data.get('body', f"Merge pull request #{pr_number}")
+        except:
+            # Fallback if we can't fetch PR details
+            if not commit_title:
+                commit_title = f"Merge PR #{pr_number}"
+            if not commit_message:
+                commit_message = f"Merge pull request #{pr_number}"
 
     url = f"{settings.github_api_url}/repos/{owner}/{repo}/pulls/{pr_number}/merge"
     headers = _get_github_headers()
+    
+    # Prepare merge data
+    merge_data = {
+        "merge_method": merge_method  # merge, squash, or rebase
+    }
+    
+    if commit_title:
+        merge_data["commit_title"] = commit_title
+    if commit_message:
+        merge_data["commit_message"] = commit_message
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.put(url, headers=headers, timeout=settings.http_timeout)
+            response = await client.put(url, headers=headers, json=merge_data, timeout=settings.http_timeout)
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            result["commit_title"] = commit_title
+            result["commit_message"] = commit_message
+            return result
         except httpx.RequestError as e:
             raise HTTPException(status_code=502, detail=f"GitHub API error: {e}")
 
@@ -165,6 +205,40 @@ async def close_pull_request(owner: str, repo: str, pr_number: int) -> Dict[str,
     async with httpx.AsyncClient() as client:
         try:
             response = await client.patch(url, headers=headers, json=data, timeout=settings.http_timeout)
+            response.raise_for_status()
+            return response.json()
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=502, detail=f"GitHub API error: {e}")
+
+@tool(name="github_get_pr_files")
+async def get_pull_request_files(owner: str, repo: str, pr_number: int) -> List[Dict[str, Any]]:
+    """Gets the list of files changed in a pull request."""
+    if settings.github_mock:
+        return [
+            {
+                "filename": "src/main.py",
+                "status": "modified",
+                "additions": 10,
+                "deletions": 5,
+                "changes": 15,
+                "patch": "@@ -1,3 +1,8 @@\n def main():\n-    print('Hello')\n+    print('Hello World')\n+    print('New feature')\n"
+            },
+            {
+                "filename": "README.md",
+                "status": "added",
+                "additions": 20,
+                "deletions": 0,
+                "changes": 20,
+                "patch": "@@ -0,0 +1,20 @@\n+# Project Documentation\n+This is a new README file.\n"
+            }
+        ]
+
+    url = f"{settings.github_api_url}/repos/{owner}/{repo}/pulls/{pr_number}/files"
+    headers = _get_github_headers()
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers, timeout=settings.http_timeout)
             response.raise_for_status()
             return response.json()
         except httpx.RequestError as e:
@@ -187,6 +261,35 @@ async def get_issues(owner: str, repo: str) -> List[GithubIssue]:
             # Filter out PRs (issues API includes PRs when 'pull_request' key exists)
             only_issues = [issue for issue in raw if "pull_request" not in issue]
             return [GithubIssue(**issue) for issue in only_issues]
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=502, detail=f"GitHub API error: {e}")
+
+@tool(name="github_get_pull_requests")
+async def get_pull_requests(owner: str, repo: str, state: str = "open") -> List[PullRequest]:
+    """Gets a list of pull requests for a repository."""
+    if settings.github_mock:
+        return [
+            PullRequest(
+                id=1, 
+                number=1, 
+                title="Test PR", 
+                state=state, 
+                html_url="http://example.com/pull/1",
+                head={"ref": "feature-branch"},
+                base={"ref": "main"}
+            )
+        ]
+
+    url = f"{settings.github_api_url}/repos/{owner}/{repo}/pulls"
+    headers = _get_github_headers()
+    params = {"state": state}
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers, params=params, timeout=settings.http_timeout)
+            response.raise_for_status()
+            raw = response.json()
+            return [PullRequest(**pr) for pr in raw]
         except httpx.RequestError as e:
             raise HTTPException(status_code=502, detail=f"GitHub API error: {e}")
 

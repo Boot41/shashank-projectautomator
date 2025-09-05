@@ -22,6 +22,10 @@ class JiraIssueBasic(BaseModel):
     status: Optional[str] = None
     assignee: Optional[str] = "Unassigned"
     priority: Optional[str] = None
+    due_date: Optional[str] = None
+    reporter: Optional[str] = None
+    created: Optional[str] = None
+    updated: Optional[str] = None
 
 class JiraSprint(BaseModel):
     id: int

@@ -34,7 +34,7 @@ async def process_natural_language(natural_language: str) -> ProcessedCommand:
     """
     
     try:
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
         response = await model.generate_content_async(
             f"{system_prompt}\n\nUser request: {natural_language}"
         )
@@ -61,7 +61,7 @@ async def generate_ai_response(prompt: str) -> AIResponse:
     configure_genai()
     
     try:
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
         response = await model.generate_content_async(prompt)
         
         if not response.text:

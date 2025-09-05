@@ -31,16 +31,28 @@ try:
         # Support both legacy {prompt} and new {prompt, context}
         final_prompt = prompt
         context: Dict[str, Any] = {}
+        session_id = None
         if body and isinstance(body, dict):
             if final_prompt is None and "prompt" in body:
                 final_prompt = body.get("prompt")
             if isinstance(body.get("context"), dict):
                 context = body.get("context") or {}
+            session_id = body.get("session_id")
         if not final_prompt:
             raise HTTPException(status_code=422, detail="Missing 'prompt'")
 
-        # Pass prompt (context can be used in the future; currently used inside the agent via settings)
-        response = await agent.run(str(final_prompt))
+        # Handle clear context command
+        if final_prompt.strip() == "/clearcontext":
+            from app.services.context_service import context_service
+            context_service.clear_context()
+            return {
+                "result": "Context cleared successfully. Starting fresh session.",
+                "toolCalls": [],
+                "model_summary": "Session context has been reset."
+            }
+
+        # Pass prompt with session ID for context management
+        response = await agent.run(str(final_prompt), session_id=session_id)
         # Normalize agent responses into the stable schema
         if isinstance(response, dict) and ("result" in response or "error" in response or "toolCalls" in response):
             return response

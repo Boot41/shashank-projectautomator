@@ -70,8 +70,28 @@ async def get_issues_for_project(project_key: str, status: str = None) -> List[J
     """Gets a list of issues for a specific project, optionally filtered by status."""
     if settings.jira_mock:
         return [
-            JiraIssueBasic(key=f"{project_key}-1", summary="Sample issue 1", status="To Do", assignee="John Doe", priority="High"),
-            JiraIssueBasic(key=f"{project_key}-2", summary="Sample issue 2", status="In Progress", assignee="Jane Smith", priority="Medium")
+            JiraIssueBasic(
+                key=f"{project_key}-1", 
+                summary="Sample issue 1", 
+                status="To Do", 
+                assignee="John Doe", 
+                priority="High",
+                due_date="2025-09-15",
+                reporter="Admin User",
+                created="2025-09-01",
+                updated="2025-09-01"
+            ),
+            JiraIssueBasic(
+                key=f"{project_key}-2", 
+                summary="Sample issue 2", 
+                status="In Progress", 
+                assignee="Jane Smith", 
+                priority="Medium",
+                due_date="2025-09-20",
+                reporter="Admin User",
+                created="2025-09-02",
+                updated="2025-09-03"
+            )
         ]
 
     jql = f"project = {project_key}"
@@ -83,7 +103,7 @@ async def get_issues_for_project(project_key: str, status: str = None) -> List[J
     headers = {"Accept": "application/json"}
     params = {
         "jql": jql,
-        "fields": "summary,status,assignee,priority",
+        "fields": "summary,status,assignee,priority,duedate,reporter,created,updated",
         "maxResults": 50,
         "startAt": 0,
     }
@@ -100,12 +120,28 @@ async def get_issues_for_project(project_key: str, status: str = None) -> List[J
                     status_data = fields.get("status", {})
                     assignee_data = fields.get("assignee", {})
                     priority_data = fields.get("priority", {})
+                    reporter_data = fields.get("reporter", {})
+                    
+                    # Format dates for better readability
+                    created_date = fields.get("created")
+                    updated_date = fields.get("updated")
+                    due_date = fields.get("duedate")
+                    
+                    if created_date:
+                        created_date = created_date.split("T")[0]  # Extract just the date part
+                    if updated_date:
+                        updated_date = updated_date.split("T")[0]  # Extract just the date part
+                    
                     issues.append(JiraIssueBasic(
                         key=issue.get("key"),
                         summary=fields.get("summary"),
                         status=status_data.get("name") if status_data else None,
                         assignee=assignee_data.get("displayName") if assignee_data else "Unassigned",
-                        priority=priority_data.get("name") if priority_data else None
+                        priority=priority_data.get("name") if priority_data else None,
+                        due_date=due_date,
+                        reporter=reporter_data.get("displayName") if reporter_data else None,
+                        created=created_date,
+                        updated=updated_date
                     ))
                 if len(data.get("issues", [])) < params["maxResults"]:
                     break
@@ -195,10 +231,10 @@ async def get_possible_transitions(issue_key: str) -> List[Dict[str, Any]]:
             raise HTTPException(status_code=502, detail=f"Failed to get transitions for issue {issue_key}: {e}")
 
 @tool(name="jira_transition_issue")
-async def transition_issue(issue_key: str, transition_id: str) -> None:
+async def transition_issue(issue_key: str, transition_id: str) -> Dict[str, Any]:
     """Transitions a Jira issue to a new status using a transition ID."""
     if settings.jira_mock:
-        return
+        return {"status": "success", "message": f"Issue {issue_key} transitioned successfully", "transition_id": transition_id}
 
     url = f"{settings.jira_base_url.rstrip('/')}/rest/api/3/issue/{issue_key}/transitions"
     auth = (settings.jira_email, settings.jira_api_token)
@@ -209,10 +245,31 @@ async def transition_issue(issue_key: str, transition_id: str) -> None:
         try:
             response = await client.post(url, auth=auth, headers=headers, json=payload, timeout=settings.http_timeout)
             response.raise_for_status()
+            return {"status": "success", "message": f"Issue {issue_key} transitioned successfully", "transition_id": transition_id}
         except httpx.RequestError as e:
             raise HTTPException(status_code=502, detail=f"Failed to transition issue {issue_key}: {e}")
 
-@tool(name="jira_comment_issue")
+@tool(name="jira_get_issue_comments")
+async def get_issue_comments(issue_key: str) -> List[Dict[str, Any]]:
+    """Gets all comments for a Jira issue."""
+    if settings.jira_mock:
+        return [
+            {"id": "12345", "body": "This is a mock comment", "author": {"displayName": "Test User"}, "created": "2023-01-01T00:00:00.000Z"}
+        ]
+
+    url = f"{settings.jira_base_url.rstrip('/')}/rest/api/3/issue/{issue_key}/comment"
+    auth = (settings.jira_email, settings.jira_api_token)
+    headers = {"Accept": "application/json"}
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, auth=auth, headers=headers, timeout=settings.http_timeout)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("comments", [])
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=502, detail=f"Failed to get comments for issue {issue_key}: {e}")
+
 async def comment_issue(issue_key: str, comment_text: str) -> Dict[str, Any]:
     """Adds a comment to a Jira issue."""
     if settings.jira_mock:

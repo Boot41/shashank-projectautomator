@@ -4,10 +4,10 @@ from ..services.email_service import send_email
 
 # Jira runners
 async def run_jira_fetch_issue(ticket_id: str):
-    return await jira_service.fetch_issue(ticket_id)
+    return await jira_service.fetch_jira_issue(ticket_id)
 
 async def run_jira_get_projects():
-    return await jira_service.get_projects()
+    return await jira_service.get_jira_projects()
 
 async def run_jira_get_issues_for_project(project_key: str):
     return await jira_service.get_issues_for_project(project_key)
@@ -31,8 +31,49 @@ async def run_jira_get_possible_transitions(ticket_id: str):
 async def run_jira_transition_issue(ticket_id: str, transition_id: str):
     return await jira_service.transition_issue(ticket_id, transition_id)
 
-async def run_jira_comment_issue(ticket_id: str, comment_body: str):
-    return await jira_service.comment_issue(ticket_id, comment_body)
+async def run_jira_summarize_and_email_issue(issue_key: str, to_email: str, additional_context: str = ""):
+    """Summarize a Jira issue and prepare email with confirmation workflow"""
+    try:
+        # First, fetch the issue details
+        issue_details = await jira_service.fetch_jira_issue(issue_key)
+        
+        if not issue_details:
+            return {"status": "error", "error": f"Issue {issue_key} not found"}
+        
+        # Generate a comprehensive summary
+        summary = f"""
+Jira Issue Summary: {issue_details.ticket}
+
+Title: {issue_details.title}
+Status: {issue_details.status}
+Assignee: {issue_details.assignee}
+
+Description:
+{issue_details.description or 'No description provided'}
+
+Additional Context:
+{additional_context if additional_context else 'None provided'}
+        """.strip()
+        
+        # Return in email preview format for confirmation
+        return {
+            "status": "preview",
+            "action_type": "Jira Issue Summary",
+            "email_preview": {
+                "to": to_email,
+                "subject": f"Jira Issue Summary: {issue_details.ticket} - {issue_details.title}",
+                "body": summary
+            },
+            "message": f"📧 Jira Issue Summary Email Preview for {issue_key}:\n\nTo: {to_email}\nSubject: Jira Issue Summary: {issue_details.ticket} - {issue_details.title}\n\nBody:\n{summary}\n\nPlease confirm if this summary email looks good to send, or provide feedback for modifications."
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+async def run_jira_comment_issue(issue_key: str, comment_text: str):
+    return await jira_service.comment_issue(issue_key, comment_text)
+
+async def run_jira_get_issue_comments(issue_key: str):
+    return await jira_service.get_issue_comments(issue_key)
 
 async def run_jira_get_sprints(project_key: str):
     return await jira_service.get_sprints(project_key)
@@ -48,23 +89,27 @@ async def run_github_get_branches(owner: str, repo: str):
     return await github_service.get_branches(owner, repo)
 
 async def run_github_create_branch(owner: str, repo: str, branch_name: str, source_branch: str = "main"):
-    from ..models.github_models import CreateGithubBranch
-    payload = CreateGithubBranch(ref=f"refs/heads/{branch_name}", sha=source_branch)
-    return await github_service.create_branch(owner, repo, payload)
+    return await github_service.create_branch(owner, repo, branch_name, source_branch)
 
 async def run_github_create_pull_request(owner: str, repo: str, title: str, head: str, base: str, body: str = ""):
     from ..models.github_models import CreatePullRequest
     payload = CreatePullRequest(title=title, head=head, base=base, body=body)
     return await github_service.create_pull_request(owner, repo, payload)
 
-async def run_github_merge_pull_request(owner: str, repo: str, pr_number: int):
-    return await github_service.merge_pull_request(owner, repo, pr_number)
+async def run_github_merge_pull_request(owner: str, repo: str, pr_number: int, commit_title: str = None, commit_message: str = None, merge_method: str = "merge"):
+    return await github_service.merge_pull_request(owner, repo, pr_number, commit_title, commit_message, merge_method)
 
 async def run_github_close_pull_request(owner: str, repo: str, pr_number: int):
     return await github_service.close_pull_request(owner, repo, pr_number)
 
 async def run_github_get_issues(owner: str, repo: str):
     return await github_service.get_issues(owner, repo)
+
+async def run_github_get_pull_requests(owner: str, repo: str, state: str = "open"):
+    return await github_service.get_pull_requests(owner, repo, state)
+
+async def run_github_get_pr_files(owner: str, repo: str, pr_number: int):
+    return await github_service.get_pull_request_files(owner, repo, pr_number)
 
 async def run_github_create_issue(owner: str, repo: str, title: str, body: str = ""):
     from ..models.github_models import CreateGithubIssue
@@ -78,31 +123,89 @@ async def run_github_comment_issue(owner: str, repo: str, issue_number: int, com
 async def run_email_send(to: str, subject: str, body: str):
     return await send_email(to_email=to, subject=subject, body=body)
 
+async def run_email_confirm_and_send(to: str, subject: str, body: str, action_type: str):
+    """Show email preview and ask for user confirmation before sending"""
+    return {
+        "status": "preview",
+        "action_type": action_type,
+        "email_preview": {
+            "to": to,
+            "subject": subject,
+            "body": body
+        },
+        "message": f"📧 Email Preview for {action_type}:\n\nTo: {to}\nSubject: {subject}\n\nBody:\n{body}\n\nPlease confirm if this email looks good to send, or provide feedback for modifications."
+    }
+
 # Enhanced email workflow runners
-async def run_regenerate_email_summary(initial_summary: str, user_feedback: str, key_points: str = "", pr_details: dict = None):
+async def run_regenerate_email_summary(initial_summary: str, user_feedback: str, key_points: str = "", pr_details: dict = None, to_email: str = "", issue_details: dict = None):
     """Regenerate email summary with user feedback and key points"""
     try:
-        # This would typically use the AI model to regenerate the summary
-        # For now, we'll create a simple enhanced summary
-        enhanced_summary = f"""
-{initial_summary}
+        # Determine if this is a Jira issue or PR based on available details
+        if issue_details:
+            # This is a Jira issue summary
+            issue_key = issue_details.get('ticket', 'unknown')
+            issue_title = issue_details.get('title', 'Jira Issue')
+            
+            # Create enhanced summary with user feedback
+            enhanced_summary = f"""
+Jira Issue Summary: {issue_key}
 
-Additional Context:
+Title: {issue_title}
+Status: {issue_details.get('status', 'Unknown')}
+Assignee: {issue_details.get('assignee', 'Unassigned')}
+
+Description:
+{issue_details.get('description', 'No description provided')}
+
+Additional Details:
 {user_feedback}
 
-Key Points to Highlight:
+Key Points:
 {key_points if key_points else "None specified"}
 
 This summary has been enhanced based on your feedback.
-        """.strip()
-        
-        return {
-            "status": "summary_regenerated",
-            "enhanced_summary": enhanced_summary,
-            "pr_details": pr_details or {},
-            "next_step": "final_approval_required",
-            "message": "Email summary has been regenerated with your feedback. Please review and approve before sending."
-        }
+            """.strip()
+            
+            # Return in preview format so CLI can display it properly
+            return {
+                "status": "preview",
+                "action_type": "Jira Issue Summary (regenerated)",
+                "email_preview": {
+                    "to": to_email or "recipient@example.com",
+                    "subject": f"Jira Issue Summary: {issue_key} - {issue_title}",
+                    "body": enhanced_summary
+                },
+                "message": f"📧 Regenerated Email Preview for Jira Issue {issue_key}:\n\nTo: {to_email or '[recipient]'}\nSubject: Jira Issue Summary: {issue_key} - {issue_title}\n\nBody:\n{enhanced_summary}\n\nPlease confirm if this regenerated email looks good to send, or provide additional feedback for modifications."
+            }
+        else:
+            # This is a PR summary (original logic)
+            pr_number = pr_details.get('number', 'unknown') if pr_details else 'unknown'
+            pr_title = pr_details.get('title', 'Pull Request') if pr_details else 'Pull Request'
+            
+            # Create enhanced summary with user feedback
+            enhanced_summary = f"""
+{initial_summary}
+
+Additional Details:
+{user_feedback}
+
+Key Points:
+{key_points if key_points else "None specified"}
+
+This summary has been enhanced based on your feedback.
+            """.strip()
+            
+            # Return in preview format so CLI can display it properly
+            return {
+                "status": "preview",
+                "action_type": "PR created (regenerated)",
+                "email_preview": {
+                    "to": to_email or "recipient@example.com",
+                    "subject": f"PR #{pr_number}: {pr_title}",
+                    "body": enhanced_summary
+                },
+                "message": f"📧 Regenerated Email Preview for PR #{pr_number}:\n\nTo: {to_email or '[recipient]'}\nSubject: PR #{pr_number}: {pr_title}\n\nBody:\n{enhanced_summary}\n\nPlease confirm if this regenerated email looks good to send, or provide additional feedback for modifications."
+            }
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
